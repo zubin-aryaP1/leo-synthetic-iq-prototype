@@ -1,0 +1,51 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Recording monitor</title>
+<style>body{background:#101722;color:#eff5ff;font:16px/1.55 system-ui;max-width:760px;margin:5vh auto;padding:20px}a{color:#66d9eb}form,section{padding:20px;background:#182234;border-radius:10px;margin:18px 0}label{display:block;margin:12px 0}input,select,button{font:inherit;max-width:100%}button{padding:7px 16px}progress{width:100%}</style>
+<a href="/">← Simulation dashboard</a><h1>Recording monitor</h1>
+<form><label>SigMF recording <select id="files" required></select></label>
+<label>Optional target reference CSV <input id="labels" type="file" accept=".csv"></label>
+<small>Use epoch,offset_hz columns for one target, with epochs numbered from zero.</small>
+<label>Match tolerance (Hz) <input id="gate" type="number" min="0.000001" step="any" value="100" required></label>
+<button id="run" disabled>Evaluate recording</button></form>
+<section><progress id="progress" value="0" max="1"></progress><p role="status" id="status">Loading recordings…</p><p id="score"></p></section>
+<script>
+const el=id=>document.getElementById(id);
+async function load(){
+ try{
+  const response=await fetch('/api/recordings');if(!response.ok)throw Error('Cannot load recordings');
+  const items=await response.json();
+  for(const item of items)el('files').add(new Option(item.name,item.id));
+  el('files').value=(items.find(item=>item.id.startsWith('1/'))||items[0])?.id||'';
+  el('run').disabled=!items.length;
+  el('status').textContent=items.length?'Ready':'Place a SigMF data and metadata pair in the project recordings folder and refresh.';
+ }catch(error){el('status').textContent=error.message}
+}
+document.querySelector('form').onsubmit=async event=>{
+ event.preventDefault();el('run').disabled=true;el('progress').value=0;el('score').textContent='';
+ el('status').textContent='Evaluating '+el('files').selectedOptions[0].textContent;
+ try{
+  const file=el('labels').files[0];
+  const response=await fetch('/api/recordings/evaluate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({recording:el('files').value,reference_csv:file?await file.text():null,tolerance_hz:Number(el('gate').value)})});
+  if(!response.ok)throw Error((await response.json()).detail);
+  const reader=response.body.pipeThrough(new TextDecoderStream()).getReader();
+  let pending='',complete=false;
+  while(true){
+   const {value,done}=await reader.read();if(done)break;
+   const lines=(pending+value).split('\n');pending=lines.pop();
+   for(const line of lines){
+    const data=JSON.parse(line);if(data.error)throw Error(data.error);
+    if('processed' in data){
+     el('progress').value=data.processed/data.epochs;
+     el('status').textContent='Epoch '+data.processed+' / '+data.epochs+' · '+data.tracks+' confirmed tracks in this epoch';
+    }else{
+     complete=true;el('progress').value=1;
+     el('status').textContent='Complete · '+data.distinct_confirmed_tracks+' distinct confirmed tracks · tracks measured in '+data.observed_epochs+' of '+data.epochs+' epochs.';
+     const s=data.accuracy;
+     el('score').textContent=s?s.matched+' matched · '+s.missed+' missed · '+s.consecutive_id_switches+' ID switches · frequency RMSE '+(s.matched_rmse_hz===null?'unavailable':s.matched_rmse_hz.toFixed(2)+' Hz'):'Accuracy requires a target reference CSV.';
+    }
+   }
+  }
+  if(!complete)throw Error('Recording evaluation interrupted.');
+ }catch(error){el('status').textContent=error.message}finally{el('run').disabled=false}
+};
+load();
+</script></html>

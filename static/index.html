@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LEO Synthetic I/Q Lab</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,Segoe UI,Arial,sans-serif;--bg:#0b1018;--panel:#131b28;--panel2:#101722;--border:#273346;--muted:#98a9be;--text:#e7eef9;--cyan:#66d9eb;--green:#9ce7bc;--gold:#f9c572}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text)}.container{max-width:1350px;margin:auto;padding:27px 30px 40px}h1{font-size:27px;letter-spacing:-.5px;margin:6px 0}h2{font-size:16px;font-weight:650;margin:0 0 6px}.muted{color:var(--muted)}.note{color:var(--muted);font-size:12px}.head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:20px}.eyebrow{color:var(--cyan);font-size:11px;letter-spacing:2px;font-weight:700;text-transform:uppercase}.chip{border:1px solid #4a4058;background:#2a2134;padding:8px 12px;border-radius:50px;color:#ffd7a1;font-size:12px;font-weight:700}.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:12px 0 20px}.toolbar label{font-size:12px;color:var(--muted)}select,button{font:inherit;border-radius:7px;min-height:36px;padding:8px 13px}select{border:1px solid var(--border);background:#182234;color:var(--text)}button{cursor:pointer;border:1px solid #365167;background:#24334a;color:var(--text);font-weight:600}button.primary{background:#1b706d;border-color:#258883;color:white}button:hover{filter:brightness(1.17)}button:disabled{opacity:.35;cursor:default}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 13px}.stat{border:1px solid var(--border);background:var(--panel);padding:15px;border-radius:11px;min-width:0}.stat .caption{color:var(--muted);text-transform:uppercase;font-size:11px;letter-spacing:.7px;margin-bottom:9px}.stat .value{font-size:24px;font-weight:750;overflow-wrap:anywhere}.stat .sub{font-size:11px;color:var(--muted);margin-top:7px}.layout{display:grid;grid-template-columns:1.35fr 1fr;gap:13px}.panel{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:18px;min-width:0}.panelhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:15px}.panelhead span{font-size:11px;color:var(--muted)}canvas{width:100%;display:block;border-radius:5px;background:var(--panel2)}#doppler{height:295px}#spectrum{height:240px}#waterfall{height:190px;image-rendering:auto}.wide{grid-column:1 / -1}table{border-collapse:collapse;width:100%;font-size:12px}th{text-align:left;color:var(--muted);font-size:11px;font-weight:600;padding:12px 8px;border-bottom:1px solid var(--border)}td{padding:12px 8px;border-bottom:1px solid #202b3a}tr:last-child td{border-bottom:0}.status{color:var(--green)}.mono{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.pill{border:1px solid var(--border);background:#1d2a3b;border-radius:99px;padding:5px 8px;color:var(--muted);font-size:11px}.notice{margin-top:13px;background:#172035;border:1px solid #34435c;color:#c2d0de;border-radius:9px;padding:11px 15px;font-size:12px;line-height:1.6}.footer{color:var(--muted);font-size:12px;line-height:1.6;margin-top:18px}a{color:var(--cyan)}@media(max-width:900px){.layout{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.container{padding:17px}.wide{grid-column:auto}}@media(max-width:480px){.stats{grid-template-columns:1fr 1fr}.stat .value{font-size:18px}h1{font-size:22px}}
+</style>
+</head>
+<body>
+<main class="container">
+ <header class="head"><div><div class="eyebrow">Daintree × UW • Integration experiment</div><h1>LEO Synthetic I/Q Lab</h1><div class="muted" style="font-size:13px">FFT → CA-CFAR → Kalman frequency tracking → synthetic Doppler matching</div></div><span class="chip">SIMULATED DATA ONLY</span></header>
+ <p><a href="/recordings">Monitor recorded I/Q →</a></p>
+ <div class="toolbar"><label for="scenario">Scenario</label><select id="scenario"><option value="clean">Clean pass</option><option value="noisy">High noise</option><option value="interference">Strong interference</option><option value="dropout">Signal dropout</option><option value="noaa_multi">NOAA multi-track (5 signals)</option></select><button class="primary" id="start">▶ Start simulation</button><button id="stop">■ Pause</button><button id="reset">↺ New run</button><span id="connection" class="muted" style="font-size:12px;margin-left:auto">Connecting…</span></div>
+ <p id="noaaNote" class="note" hidden>Three synthetic channels use historical NOAA-15, NOAA-18 and NOAA-19 carrier frequencies with simulated Doppler, alongside the original carrier and interferer. <a href="https://ospo.noaa.gov/operations/poes/status.html">NOAA frequency source</a></p>
+ <section class="stats">
+  <div class="stat"><div class="caption">Simulated elapsed</div><div class="value" id="elapsed">0.0 s</div><div class="sub">100 kS/s complex64 input</div></div>
+  <div class="stat"><div class="caption">Frequency detections</div><div class="value" id="detections">0</div><div class="sub">Adaptive frequency-domain peaks</div></div>
+  <div class="stat"><div class="caption">Confirmed tracks</div><div class="value" id="trackCount">0</div><div class="sub">Global assignment + Kalman</div></div>
+  <div class="stat"><div class="caption">Best synthetic candidate</div><div class="value mono" style="font-size:18px" id="candidate">—</div><div class="sub" id="matchLabel">Awaiting observations</div></div>
+ </section>
+ <section class="layout">
+  <div class="panel"><div class="panelhead"><h2>Observed vs predicted frequency offset</h2><span>Hz relative to receiver center</span></div><canvas id="doppler" width="720" height="310"></canvas><div class="note" style="margin-top:10px"><span style="color:#66d9eb">●</span> Observed Kalman track &nbsp; <span style="color:#f9c572">●</span> Synthetic reference + fitted offset</div></div>
+  <div class="panel"><div class="panelhead"><h2>Live frequency spectrum</h2><span>Relative FFT power (not dBm)</span></div><canvas id="spectrum" width="550" height="255"></canvas><div class="note" style="margin-top:10px">Moving target plus stationary interferer. Both emerge from the generated I/Q samples.</div></div>
+  <div class="panel"><div class="panelhead"><h2>Live waterfall</h2><span>Latest frames, ±50 kHz baseband</span></div><canvas id="waterfall" width="256" height="190"></canvas><div class="note" style="margin-top:10px">Each row represents a new FFT snapshot; this is a simplified, decimated display.</div></div>
+  <div class="panel"><div class="panelhead"><h2>Confirmed frequency tracks</h2><span>Receiver #0 • synthetic</span></div><div style="overflow:auto"><table><thead><tr><th>Track</th><th>Offset (Hz)</th><th>Rate (Hz/s)</th><th>SNR*</th><th>Match</th></tr></thead><tbody id="tracks"><tr><td colspan="5" class="muted">Start the simulation to see detections.</td></tr></tbody></table></div><p class="note">*SNR is a relative FFT-cell estimate; not calibrated RF power or cellular RSRP/RSRQ/SINR.</p></div>
+  <div class="panel wide"><div class="panelhead"><h2>Persistent research data</h2><span>SQLite • separate from signal processing</span></div><div style="display:flex;flex-wrap:wrap;gap:25px"><div><div class="note">Current run</div><div class="mono" id="runid" style="font-size:13px">—</div></div><div><div class="note">Database runs</div><strong id="dbRuns">0</strong></div><div><div class="note">Persisted observations</div><strong id="dbCount">0</strong></div><div><div class="note">Queue drops</div><strong id="drops">0</strong></div><div><div class="note">API routes</div><a href="/docs" target="_blank">Interactive docs</a> · <a href="/api/history" target="_blank">History</a></div></div></div>
+ </section>
+ <div class="notice"><strong>Research prototype disclaimer:</strong> The samples, Doppler reference curves, candidate IDs, and matches are simulated. Matching uses offset-adjusted RMSE, not TLE/SGP4. The demo is for validating software boundaries, not proving real satellite reception. No authentication—run on localhost only.</div>
+ <div class="footer">Architecture: Python synthetic I/Q → NumPy FFT / CA-CFAR → simple Kalman tracker → synthetic template matcher → FastAPI + WebSocket → browser. SQLite holds confirmed track observations; the RF loop never reads the database.</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let latest=null, rendered=-1;
+const CYAN='#66d9eb', GOLD='#f9c572', GRID='#2b3a4b', TEXT='#98a9be';
+let controlPending=false, lastLiveAt=0;
+async function requestJSON(url,options={}){const response=await fetch(url,{...options,signal:AbortSignal.timeout(8000),cache:'no-store'});if(!response.ok)throw Error(await response.text());return response.json()}
+async function control(action){
+ if(controlPending)return;
+ controlPending=true;
+ ['start','stop','reset','scenario'].forEach(id=>$(id).disabled=true);
+ $('connection').textContent=action==='start'?'Starting simulation…':'Updating simulation…';
+ try{
+  await requestJSON('/api/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,scenario:$('scenario').value})});
+  if(action==='reset'){rendered=-1;let c=$('waterfall').getContext('2d');c.clearRect(0,0,256,190);}
+  const state=await requestJSON('/api/status');
+  controlPending=false;update(state);
+  $('connection').textContent=state.running?'● Simulation running':'● Simulation paused';
+ }catch(e){$('connection').textContent='Control error: '+e.message;}
+ finally{controlPending=false;$('reset').disabled=false;$('scenario').disabled=false;$('start').disabled=!!latest?.running;$('stop').disabled=!latest?.running;}
+}
+$('start').onclick=()=>control('start');$('stop').onclick=()=>control('stop');$('reset').onclick=()=>control('reset');$('scenario').onchange=()=>control('reset');
+function format(n,d=1){return Number.isFinite(Number(n))?Number(n).toFixed(d):'—'}
+function chartGrid(ctx,w,h,pad,maxY,minY,xlab,ylab){ctx.clearRect(0,0,w,h);ctx.fillStyle='#101722';ctx.fillRect(0,0,w,h);ctx.font='11px Segoe UI';ctx.strokeStyle=GRID;ctx.lineWidth=1;for(let i=0;i<=4;i++){let y=pad+i*(h-2*pad)/4;ctx.beginPath();ctx.moveTo(pad,y);ctx.lineTo(w-pad,y);ctx.stroke();ctx.fillStyle=TEXT;ctx.fillText(String(Math.round(maxY-(maxY-minY)*i/4)),3,y+4)}ctx.fillStyle=TEXT;ctx.fillText(xlab,w/2-24,h-9);}
+function drawSpectrum(values){if(!values?.length)return;const c=$('spectrum'),ctx=c.getContext('2d'),w=c.width,h=c.height,pad=40;chartGrid(ctx,w,h,pad,55,-15,'Frequency offset (kHz)','dB');ctx.strokeStyle=CYAN;ctx.lineWidth=1.7;ctx.beginPath();values.forEach((v,i)=>{let x=pad+i*(w-2*pad)/(values.length-1);let y=pad+(55-v)/70*(h-2*pad);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();ctx.fillStyle=TEXT;ctx.fillText('-50',pad,h-17);ctx.fillText('0',w/2-4,h-17);ctx.fillText('+50',w-pad-17,h-17)}
+function drawDoppler(points){const c=$('doppler'),ctx=c.getContext('2d'),w=c.width,h=c.height,pad=45;chartGrid(ctx,w,h,pad,10000,-10000,'Time (s)','Hz');let end=points.length?points[points.length-1].t:40;let start=Math.max(0,end-40);let span=Math.max(10,end-start);const style=[['predicted',GOLD],['observed',CYAN]];style.forEach(([key,color])=>{ctx.beginPath();ctx.strokeStyle=color;ctx.lineWidth=2.2;let begun=false;points.forEach(p=>{if(p.t<start||p[key]===null||p[key]===undefined){begun=false;return}let x=pad+(p.t-start)/span*(w-2*pad);let y=pad+(10000-p[key])/20000*(h-2*pad);if(begun)ctx.lineTo(x,y);else ctx.moveTo(x,y);begun=true});ctx.stroke()});ctx.fillStyle=TEXT;ctx.fillText(format(start,0)+'s',pad,h-18);ctx.fillText(format(end,0)+'s',w-pad-25,h-18)}
+function color(v){let t=Math.max(0,Math.min(1,(v+12)/64));return [Math.round(10+230*t),Math.round(32+170*Math.min(1,t*1.7)),Math.round(70+80*(1-t))]}
+function addWaterfall(values){if(!values?.length)return;let c=$('waterfall'),ctx=c.getContext('2d');ctx.drawImage(c,0,1);let img=ctx.createImageData(256,1);for(let i=0;i<256;i++){let v=values[i],col=color(v);img.data.set([...col,255],i*4)}ctx.putImageData(img,0,0)}
+function update(payload){latest=payload;$('noaaNote').hidden=payload.scenario!=='noaa_multi';$('elapsed').textContent=format(payload.elapsed_seconds)+' s';$('detections').textContent=payload.detections?.length||0;$('trackCount').textContent=payload.tracks?.length||0;$('runid').textContent=payload.run_id?.slice(0,18)||'—';$('drops').textContent=payload.dropped_persistence_batches||0;const b=payload.best_match?.match;$('candidate').textContent=b?.satellite||'—';$('matchLabel').textContent=b?`${b.confidence} · RMSE ${format(b.rmse_hz)} Hz`:'Awaiting plausible track';$('start').disabled=controlPending||!!payload.running;$('stop').disabled=controlPending||!payload.running;let rows=payload.tracks||[];$('tracks').innerHTML=rows.length?rows.slice(0,6).map(t=>`<tr><td class="mono">T${t.id}</td><td class="mono">${format(t.frequency_hz,0)}</td><td>${format(t.frequency_rate_hz_s,0)}</td><td>${format(t.snr_db)} dB</td><td>${t.match?.confidence==='no reliable match'?'—':(t.match?.satellite||'pending')}</td></tr>`).join(''):'<tr><td colspan="5" class="muted">No confirmed tracks yet</td></tr>';if(payload.elapsed_seconds!==rendered){drawSpectrum(payload.spectrum_db_relative);drawDoppler(payload.plot||[]);addWaterfall(payload.spectrum_db_relative);rendered=payload.elapsed_seconds;}}
+let ws=null;
+function connect(){
+ let scheme=location.protocol==='https:'?'wss:':'ws:';
+ ws=new WebSocket(`${scheme}//${location.host}/ws/live`);
+ ws.onmessage=e=>{try{const payload=JSON.parse(e.data);lastLiveAt=Date.now();update(payload);$('connection').textContent='● Live connection';$('connection').classList.add('status')}catch(ex){console.error(ex)}};
+ ws.onclose=()=>{lastLiveAt=0;setTimeout(connect,5000)};
+ ws.onerror=()=>ws.close();
+}
+connect();
+async function pollStatus(){
+ try{
+  const s=await requestJSON('/api/status');
+  $('dbRuns').textContent=s.database.runs;$('dbCount').textContent=s.database.observations;
+  if(Date.now()-lastLiveAt>1500){update(s);if(!controlPending){$('connection').textContent=s.running?'● Running · HTTP updates':'● Ready · HTTP updates';$('connection').classList.add('status')}}
+ }catch(e){if(Date.now()-lastLiveAt>1500){$('connection').textContent='Server unavailable · retrying…';$('connection').classList.remove('status')}}
+ finally{setTimeout(pollStatus,500)}
+}
+pollStatus();
+drawDoppler([]);
+</script>
+</body></html>
